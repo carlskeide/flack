@@ -6,7 +6,9 @@ setup(name="flack",
       version=__version__,
       description="Slack integration for flask",
       author="Carl Skeide",
-      py_modules=["flack"],
+      packages=['flack'],
+      include_package_data=True,
+      zip_safe=False,
       install_requires=[
         "flask",
         "requests"
