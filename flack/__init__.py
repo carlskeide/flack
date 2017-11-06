@@ -10,9 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 from requests import post
 from flask import Blueprint, request, jsonify
 
+from .message import Attachment, PrivateResponse, IndirectResponse
+from .exceptions import SlackTokenError
+
 logger = logging.getLogger(__name__)
 
-__all__ = ["Flack", "Attachment", "PrivateResponse", "IndirectResponse", "SlackTokenError"]
+__all__ = ["Flack", ]
 
 DEFAULT_OAUTH_SCOPE = "commands,users:read,channels:read,chat:write:bot"
 OAUTH_CREDENTIALS = namedtuple("oauth_credentials", ("team_id", "access_token", "scope"))
@@ -21,9 +24,6 @@ SLACK_TRIGGER = namedtuple("trigger", ("callback", "user"))
 
 CALLER = namedtuple("caller", ("id", "name", "team"))
 CHANNEL = namedtuple("channel", ("id", "name", "team"))
-
-PrivateResponse = namedtuple("PrivateResponse", ("feedback"))
-IndirectResponse = namedtuple("IndirectResponse", ("feedback", "indirect"))
 
 thread_executor = ThreadPoolExecutor(1)
 
@@ -43,47 +43,6 @@ def _send_message(self, url, message):
         raise self.retry()
 
     return True
-
-
-class SlackTokenError(Exception):
-    pass
-
-
-class Attachment(object):
-    keys = {
-        "fallback",
-        "color",
-        "pretext",
-        "author_name",
-        "author_link",
-        "author_icon",
-        "title",
-        "title_link",
-        "text",
-        "fields",
-        "image_url",
-        "thumb_url",
-        "callback_id",
-        "actions"
-    }
-
-    def __init__(self, **kwargs):
-        self._struct = {k: v for k, v in kwargs.items() if k in self.keys}
-
-    @property
-    def as_dict(self):
-        return self._struct
-
-
-class Action(Attachment):
-    keys = {
-        "name",
-        "text",
-        "type",
-        "style",
-        "value",
-        "confirm"
-    }
 
 
 class Flack(object):
