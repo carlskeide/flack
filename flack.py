@@ -12,8 +12,10 @@ from flask import Blueprint, request, jsonify
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["slack_username", "send_message", "SlackFlask", "Attachment",
-           "PrivateResponse", "IndirectResponse", "SlackTokenError"]
+__all__ = ["Flack", "Attachment", "PrivateResponse", "IndirectResponse", "SlackTokenError"]
+
+DEFAULT_OAUTH_SCOPE = "commands,users:read,channels:read,chat:write:bot"
+OAUTH_CREDENTIALS = namedtuple("oauth_credentials", ("team_id", "access_token", "scope"))
 
 SLACK_TRIGGER = namedtuple("trigger", ("callback", "user"))
 
@@ -26,11 +28,7 @@ IndirectResponse = namedtuple("IndirectResponse", ("feedback", "indirect"))
 thread_executor = ThreadPoolExecutor(1)
 
 
-def slack_username(id):
-    return "<@{}>".format(id)
-
-
-def send_message(self, url, message):
+def _send_message(self, url, message):
     logger.debug("Attempting to send message to: {}\nContents: {}".format(url, message))
 
     time.sleep(1)  # This should prevent out-of-order issues, which slack really doesn't like
@@ -88,16 +86,26 @@ class Action(Attachment):
     }
 
 
-class SlackFlask(object):
+class Flack(object):
     triggers = {}
     commands = {}
     actions = {}
+
+    oauth_config = None
+    oauth_callback = None
 
     def __init__(self, flask_app, token, url_prefix='/flack', default_name="flack"):
         self.token = token
         self.default_name = default_name
 
         blueprint = Blueprint('slack_flask', __name__)
+
+        blueprint.add_url_rule("/",
+                               methods=['GET'],
+                               view_func=self._dispath_index)
+        blueprint.add_url_rule("/oauth",
+                               methods=['GET', 'POST'],
+                               view_func=self._dispath_oauth)
 
         blueprint.add_url_rule("/webhook",
                                methods=['POST'],
@@ -129,7 +137,7 @@ class SlackFlask(object):
         logger.debug("Generated indirect response: {!r}".format(
             indirect_response))
 
-        thread_executor.submit(send_message, url, indirect_response)
+        thread_executor.submit(_send_message, url, indirect_response)
 
     def _response(self, message, response_url=None, user=None,
                   private=False, replace=False):
@@ -206,6 +214,49 @@ class SlackFlask(object):
     def _validate_request(self, data):
         if data.get("token") != self.token:
             raise SlackTokenError("Invalid token: {}".format(data.get("token")))
+
+    def _dispath_index(self):
+        if not self.oauth_config:
+            return ""
+
+        return render_template("index.tpl", **oauth_config)
+
+    def _dispath_pauth(self):
+        if not self.oauth_config:
+            return ""
+
+        code = request.args["code"]
+        logger.info(u"OAuth request called with code: {!r}".format(code))
+
+        try:
+            oauth_request = {
+                "code": code,
+                "client_id": self.oauth_config["client_id"],
+                "client_secret": self.oauth_config["client_secret"]
+            }
+
+            logger.debug(u"Requesting OAuth Credentials: {!r}".format(oauth_request))
+            response = post("https://slack.com/api/oauth.access",
+                            data=oauth_request)
+
+            logger.debug(u"Slack response: {!r}".format(response.text))
+
+        except Exception:
+            return u"Sorry, something went wrong."
+
+        if not response.ok:
+            return u"Slack rejected the request."
+
+        oauth_response = response.json()
+        logger.info(u"Received new OAuth credentials: {!r}".format(oauth_response))
+
+        credentials = OAUTH_CREDENTIALS(
+            team_id=oauth_response["team_id"],
+            access_token=oauth_response["access_token"],
+            scope=oauth_response["scope"]
+        )
+
+        self.oauth_callback(credentials)
 
     def _dispath_webhook(self):
         try:
@@ -307,6 +358,21 @@ class SlackFlask(object):
 
             exception_msg = re.sub(r"[\<\>]", "", e)
             return self._response(exception_msg, private=True, replace=False)
+
+    def oauth(self, name, client_id, client_secret, scope=None):
+        self.oauth_config = {
+            "app_title": name,
+            "client_id":client_id,
+            "client_secret":client_secret,
+            "auth_scope": scope or DEFAULT_OAUTH_SCOPE
+        }
+
+        def decorator(fn):
+            logger.debug("Register oauth: {}".format(name))
+            self.oauth_callback = fn
+            return fn
+
+        return decorator
 
     def trigger(self, trigger_word, **kwargs):
         if not trigger_word:
