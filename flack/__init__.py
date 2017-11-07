@@ -44,16 +44,21 @@ class Flack(object):
     commands = {}
     actions = {}
 
-    def __init__(self, flask_app, token, **kwargs):
-        self.app = flask_app
-        self.token = token
+    def __init__(self, app=None):
+        self.app = app
+        if app is not None:
+            self.init_app(app)
 
-        kwargs.setdefauult("url_prefix", '/flack')
-        kwargs.setdefauult("default_name", "flack")
-        self.default_name = kwargs["default_name"]
+    def init_app(app):
+        self.app = app
+
+        if not self.app.config.get("FLACK_TOKEN")
+            raise SlackTokenError("A token must be defined")
+
+        self.app.config.setdefauult("FLACK_URL_PREFIX", "/flack")
+        self.app.config.setdefauult("FLACK_DEFAULT_NAME", "flack")
 
         blueprint = Blueprint('slack_flask', __name__)
-
         blueprint.add_url_rule("/webhook",
                                methods=['POST'],
                                view_func=self._dispath_webhook)
@@ -64,7 +69,7 @@ class Flack(object):
                                methods=['POST'],
                                view_func=self._dispath_action)
 
-        flask_app.register_blueprint(blueprint, kwargs["url_prefix"])
+        app.register_blueprint(blueprint, self.app.config["FLACK_URL_PREFIX"])
 
     def _indirect_response(self, message, url):
         indirect_response = {
@@ -89,7 +94,7 @@ class Flack(object):
     def _response(self, message, response_url=None, user=None,
                   private=False, replace=False):
         response = {
-            "username": user or self.default_name,
+            "username": user or self.app.config["FLACK_DEFAULT_NAME"],
             "text": "",
             "attachments": [],
             "response_type": "ephemeral" if private else "in_channel",
@@ -159,9 +164,9 @@ class Flack(object):
         return data
 
     def _validate_request(self, data):
-        if data.get("token") != self.token:
+        if data.get("token") != self.app.config["FLACK_TOKEN"]:
             raise SlackTokenError(
-                "Invalid token: {}".format(data.get("token")))
+                "Invalid token from slack: {}".format(data.get("token")))
 
     def _dispath_webhook(self):
         try:
@@ -269,7 +274,7 @@ class Flack(object):
         if not trigger_word:
             raise AttributeError("invalid invocation")
 
-        kwargs.setdefauult("as_user", self.default_name)
+        kwargs.setdefauult("as_user", self.app.config["FLACK_DEFAULT_NAME"])
 
         def decorator(fn):
             logger.debug("Register trigger: {}".format(trigger_word))
