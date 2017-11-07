@@ -8,7 +8,7 @@ PrivateResponse = namedtuple("PrivateResponse", ("feedback"))
 IndirectResponse = namedtuple("IndirectResponse", ("feedback", "indirect"))
 
 
-class SlackObject(metaclass=abc.ABCMeta)
+class SlackObject(metaclass=abc.ABCMeta):
     keys = {}
 
     def __init__(self, **kwargs):
