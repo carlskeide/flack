@@ -182,7 +182,7 @@ class Flack(object):
                 req["trigger_word"], req["text"]))
 
             req_user = CALLER(req["user_id"], req["user_name"], req["team_id"])
-            response = callback(req["text"], user=req_user)
+            response = callback(text=req["text"], user=req_user)
             return self._response(response, user=user)
 
         except SlackTokenError as e:
@@ -209,7 +209,7 @@ class Flack(object):
             logger.info("Running command: '{}' with: '{}'".format(
                 req["command"], req["text"]))
 
-            response = callback(req["text"],
+            response = callback(text=req["text"],
                                 user=CALLER(req["user_id"],
                                             req["user_name"],
                                             req["team_id"]),
@@ -247,9 +247,9 @@ class Flack(object):
             user = req["user"]
             channel = req["channel"]
             team = req["team"]
-            response = callback(action["value"],
+            response = callback(value=action["value"],
                                 ts=req["message_ts"],
-                                instance=req["callback_id"],
+                                callback=req["callback_id"],
                                 user=CALLER(user["id"],
                                             user["name"],
                                             team["id"]),
