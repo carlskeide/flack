@@ -4,3 +4,9 @@ __all__ = ["SlackTokenError", ]
 
 class SlackTokenError(Exception):
     pass
+
+class OAuthConfigError(Exception):
+    pass
+
+class OAuthResponseError(Exception):
+    pass
