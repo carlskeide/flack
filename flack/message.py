@@ -1,13 +1,25 @@
 # coding=utf-8
+import abc
 from collections import namedtuple
 
-__all__ = ["Attachment", "PrivateResponse", "IndirectResponse", ]
+__all__ = ["PrivateResponse", "IndirectResponse", "Attachment", "Action", ]
 
 PrivateResponse = namedtuple("PrivateResponse", ("feedback"))
 IndirectResponse = namedtuple("IndirectResponse", ("feedback", "indirect"))
 
 
-class Attachment(object):
+class SlackObject(metaclass=abc.ABCMeta)
+    keys = {}
+
+    def __init__(self, **kwargs):
+        self._struct = {k: v for k, v in kwargs.items() if k in self.keys}
+
+    @property
+    def as_dict(self):
+        return self._struct
+
+
+class Attachment(SlackObject):
     keys = {
         "fallback",
         "color",
@@ -25,15 +37,8 @@ class Attachment(object):
         "actions"
     }
 
-    def __init__(self, **kwargs):
-        self._struct = {k: v for k, v in kwargs.items() if k in self.keys}
 
-    @property
-    def as_dict(self):
-        return self._struct
-
-
-class Action(Attachment):
+class Action(SlackObject):
     keys = {
         "name",
         "text",
