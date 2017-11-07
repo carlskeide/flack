@@ -21,7 +21,7 @@ OAUTH_CREDENTIALS = namedtuple(
 
 
 def render_button():
-    if not app.config["FLACK_CLIENT_ID"]:
+    if not app.config.get("FLACK_CLIENT_ID"):
         raise OAuthConfigError("Requires client id")
 
     logger.debug("Rendering oauth button")
@@ -64,8 +64,8 @@ def _oauth_callback_response(code):
 def callback(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if (not app.config["FLACK_CLIENT_ID"]
-                and app.config["FLACK_CLIENT_SECRET"]):
+        if (not app.config.get("FLACK_CLIENT_ID")
+                and app.config.get("FLACK_CLIENT_SECRET")):
             raise OAuthConfigError("Requires client id and secret")
 
         code = request.args["code"]
