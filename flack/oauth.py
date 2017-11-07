@@ -4,6 +4,7 @@ from functools import wraps
 from collections import namedtuple
 
 from requests import post, HTTPError
+from flask import request, render_template
 from flask import current_app as app
 
 from .exceptions import OAuthConfigError, OAuthResponseError
@@ -13,7 +14,10 @@ __all__ = ["render_button", "callback", ]
 logger = logging.getLogger(__name__)
 
 DEFAULT_OAUTH_SCOPE = "commands,users:read,channels:read,chat:write:bot"
-OAUTH_CREDENTIALS = namedtuple("oauth_credentials", ("team_id", "access_token", "scope"))
+OAUTH_CREDENTIALS = namedtuple(
+    "oauth_credentials",
+    ("team_id", "access_token", "scope")
+)
 
 
 def render_button():
@@ -29,14 +33,14 @@ def render_button():
 
 def _oauth_callback_response(code):
     try:
-        request = {
+        response = {
             "code": code,
             "client_id": app.config["FLACK_CLIENT_ID"],
             "client_secret": app.config["FLACK_CLIENT_SECRET"]
         }
 
-        logger.debug(u"Requesting OAuth Credentials: {!r}".format(request))
-        response = post("https://slack.com/api/oauth.access", data=request)
+        logger.debug(u"Requesting OAuth Credentials: {!r}".format(response))
+        response = post("https://slack.com/api/oauth.access", data=response)
         response.raise_for_status()
 
         logger.debug(u"Slack response: {!r}".format(response.text))
@@ -57,10 +61,11 @@ def _oauth_callback_response(code):
                                  scope=oauth_response["scope"])
 
 
-def callback(fn)
+def callback(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not app.config["FLACK_CLIENT_ID"] and app.config["FLACK_CLIENT_SECRET"]:
+        if (not app.config["FLACK_CLIENT_ID"]
+                and app.config["FLACK_CLIENT_SECRET"]):
             raise OAuthConfigError("Requires client id and secret")
 
         code = request.args["code"]
