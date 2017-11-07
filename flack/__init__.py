@@ -25,20 +25,18 @@ thread_executor = ThreadPoolExecutor(1)
 
 
 def _send_message(self, url, message):
-    logger.debug("Attempting to send message to: {}\nContents: {}".format(url, message))
+    logger.debug("Sending message to: {}, contents: {}".format(url, message))
 
-    time.sleep(1)  # This should prevent out-of-order issues, which slack really doesn't like
+    # This should prevent out-of-order issues, which slack really doesn't like
+    time.sleep(1)
     response = post(url, json=message)
 
     if response.status_code == 404:
-        logger.error("Slack url has expired, aborting. response was: {}".format(response.text))
+        logger.error("Slack url has expired, aborting.")
         return False
 
-    elif not response.status_code == 200:
-        logger.warn("Slack responded with a non-200 status, will retry.")
-        raise self.retry()
-
-    return True
+    else:
+        return True
 
 
 class Flack(object):
@@ -46,10 +44,13 @@ class Flack(object):
     commands = {}
     actions = {}
 
-    def __init__(self, flask_app, token, url_prefix='/flack', default_name="flack"):
+    def __init__(self, flask_app, token, **kwargs):
         self.app = flask_app
         self.token = token
-        self.default_name = default_name
+
+        kwargs.setdefauult("url_prefix", '/flack')
+        kwargs.setdefauult("default_name", "flack")
+        self.default_name = kwargs["default_name"]
 
         blueprint = Blueprint('slack_flask', __name__)
 
@@ -63,7 +64,7 @@ class Flack(object):
                                methods=['POST'],
                                view_func=self._dispath_action)
 
-        flask_app.register_blueprint(blueprint, url_prefix)
+        flask_app.register_blueprint(blueprint, kwargs["url_prefix"])
 
     def _indirect_response(self, message, url):
         indirect_response = {
@@ -159,7 +160,8 @@ class Flack(object):
 
     def _validate_request(self, data):
         if data.get("token") != self.token:
-            raise SlackTokenError("Invalid token: {}".format(data.get("token")))
+            raise SlackTokenError(
+                "Invalid token: {}".format(data.get("token")))
 
     def _dispath_webhook(self):
         try:
@@ -202,12 +204,13 @@ class Flack(object):
             logger.info("Running command: '{}' with: '{}'".format(
                 req["command"], req["text"]))
 
-            req_user = CALLER(req["user_id"], req["user_name"], req["team_id"])
-            req_channel = CHANNEL(req["channel_id"], req["channel_name"], req["team_id"])
-
             response = callback(req["text"],
-                                user=req_user,
-                                channel=req_channel)
+                                user=CALLER(req["user_id"],
+                                            req["user_name"],
+                                            req["team_id"]),
+                                channel=CHANNEL(req["channel_id"],
+                                                req["channel_name"],
+                                                req["team_id"]))
 
             return self._response(response, response_url=req["response_url"])
 
@@ -227,7 +230,8 @@ class Flack(object):
             req = self._parse_action_req()
 
             try:
-                action = req["actions"][0]  # Slack will only send one action per request.
+                # Slack will only send one action per request.
+                action = req["actions"][0]
                 callback = self.actions[action["name"]]
 
             except KeyError as e:
@@ -238,16 +242,15 @@ class Flack(object):
             user = req["user"]
             channel = req["channel"]
             team = req["team"]
-            ts = req["message_ts"]
-
-            req_user = CALLER(user["id"], user["name"], team["id"])
-            req_channel = CHANNEL(channel["id"], channel["name"], team["id"])
-
             response = callback(action["value"],
+                                ts=req["message_ts"],
                                 instance=req["callback_id"],
-                                user=req_user,
-                                channel=req_channel,
-                                ts=ts)
+                                user=CALLER(user["id"],
+                                            user["name"],
+                                            team["id"]),
+                                channel=CHANNEL(channel["id"],
+                                                channel["name"],
+                                                team["id"]))
 
             return self._response(response, response_url=req["response_url"])
 
