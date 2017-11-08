@@ -8,6 +8,7 @@ setup(
     version=__version__,
     description="Slack integration for flask",
     author="Carl Skeide",
+    author_email="carl@skeide.se",
     license="MIT",
     keywords=[
         "flask",
