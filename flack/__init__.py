@@ -45,14 +45,13 @@ class Flack(object):
     actions = {}
 
     def __init__(self, app=None):
-        self.app = app
         if app is not None:
             self.init_app(app)
 
-    def init_app(app):
+    def init_app(self, app):
         self.app = app
 
-        if not self.app.config.get("FLACK_TOKEN")
+        if not self.app.config.get("FLACK_TOKEN"):
             raise SlackTokenError("A token must be defined")
 
         self.app.config.setdefauult("FLACK_URL_PREFIX", "/flack")
