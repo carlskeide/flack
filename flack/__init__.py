@@ -57,7 +57,7 @@ class Flack(object):
         self.app.config.setdefault("FLACK_URL_PREFIX", "/flack")
         self.app.config.setdefault("FLACK_DEFAULT_NAME", "flack")
 
-        blueprint = Blueprint('slack_flask', __name__)
+        blueprint = Blueprint('slack_flask', __name__, template_folder="templates")
         blueprint.add_url_rule("/webhook",
                                methods=['POST'],
                                view_func=self._dispath_webhook)
@@ -68,7 +68,7 @@ class Flack(object):
                                methods=['POST'],
                                view_func=self._dispath_action)
 
-        app.register_blueprint(blueprint, self.app.config["FLACK_URL_PREFIX"])
+        app.register_blueprint(blueprint, url_prefix=self.app.config["FLACK_URL_PREFIX"])
 
     def _indirect_response(self, message, url):
         indirect_response = {
