@@ -190,9 +190,9 @@ class Flack(object):
             return ""
 
         except Exception as e:
-            logger.error("Caught: {!r}, returning failure.".format(e))
+            logger.exception("Caught: {!s}, returning failure.".format(e))
 
-            exception_msg = re.sub(r"[\<\>]", "", e)
+            exception_msg = re.sub(r"[\<\>]", "", str(e))
             return self._response(exception_msg, private=True)
 
     def _dispath_command(self):
@@ -224,9 +224,9 @@ class Flack(object):
             return ""
 
         except Exception as e:
-            logger.error("Caught: {!r}, returning failure.".format(e))
+            logger.exception("Caught: {!s}, returning failure.".format(e))
 
-            exception_msg = re.sub(r"[\<\>]", "", e)
+            exception_msg = re.sub(r"[\<\>]", "", str(e))
             return self._response(exception_msg, private=True)
 
     def _dispath_action(self):
@@ -264,9 +264,9 @@ class Flack(object):
             return ""
 
         except Exception as e:
-            logger.error("Caught: {!r}, returning failure.".format(e))
+            logger.exception("Caught: {!s}, returning failure.".format(e))
 
-            exception_msg = re.sub(r"[\<\>]", "", e)
+            exception_msg = re.sub(r"[\<\>]", "", str(e))
             return self._response(exception_msg, private=True, replace=False)
 
     def trigger(self, trigger_word, **kwargs):
