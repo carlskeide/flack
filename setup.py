@@ -1,6 +1,6 @@
 from setuptools import setup
 
-__version__ = "1.2.2"
+__version__ = "1.3.0"
 __url__ = "https://github.com/carlskeide/flack"
 
 setup(
