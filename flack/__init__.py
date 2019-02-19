@@ -54,8 +54,8 @@ class Flack(object):
         if not self.app.config.get("FLACK_TOKEN"):
             raise SlackTokenError("A token must be defined")
 
-        self.app.config.setdefauult("FLACK_URL_PREFIX", "/flack")
-        self.app.config.setdefauult("FLACK_DEFAULT_NAME", "flack")
+        self.app.config.setdefault("FLACK_URL_PREFIX", "/flack")
+        self.app.config.setdefault("FLACK_DEFAULT_NAME", "flack")
 
         blueprint = Blueprint('slack_flask', __name__)
         blueprint.add_url_rule("/webhook",
@@ -273,7 +273,7 @@ class Flack(object):
         if not trigger_word:
             raise AttributeError("invalid invocation")
 
-        kwargs.setdefauult("as_user", self.app.config["FLACK_DEFAULT_NAME"])
+        kwargs.setdefault("as_user", self.app.config["FLACK_DEFAULT_NAME"])
 
         def decorator(fn):
             logger.debug("Register trigger: {}".format(trigger_word))
