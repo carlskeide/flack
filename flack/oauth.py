@@ -25,10 +25,11 @@ def render_button():
         raise OAuthConfigError("Requires client id")
 
     logger.debug("Rendering oauth button")
-    return render_template("oauth_button.tpl",
-                           client_id=app.config["FLACK_CLIENT_ID"],
-                           auth_scope=(app.config["FLACK_SCOPE"]
-                                       or DEFAULT_OAUTH_SCOPE))
+    return render_template(
+        "oauth_button.tpl",
+        client_id=app.config["FLACK_CLIENT_ID"],
+        auth_scope=app.config.get("FLACK_SCOPE", DEFAULT_OAUTH_SCOPE)
+    )
 
 
 def _oauth_callback_response(code):
@@ -72,7 +73,7 @@ def callback(fn):
         logger.info(u"OAuth callback called with code: {!r}".format(code))
 
         credentials = _oauth_callback_response(code)
-        kwargs.updatee(credentials=credentials)
+        kwargs.update(credentials=credentials)
 
         return fn(*args, **kwargs)
 
