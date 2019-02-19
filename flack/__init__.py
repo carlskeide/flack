@@ -3,6 +3,7 @@ import logging
 import re
 import time
 import json
+from functools import wraps
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 
@@ -38,6 +39,23 @@ def _send_message(self, url, message):
     else:
         return True
 
+def get_form_data(fn):
+    @wraps(fn)
+    def inner(*args, **kwargs):
+        data = request.form.to_dict()
+        return fn(data, *args, **kwargs)
+
+    return inner
+
+
+def get_json_data(fn):
+    @wraps(fn)
+    def inner(*args, **kwargs):
+        data = json.loads(request.form["payload"])
+        return fn(data, *args, **kwargs)
+
+    return inner
+
 
 class Flack(object):
     triggers = {}
@@ -57,18 +75,19 @@ class Flack(object):
         self.app.config.setdefault("FLACK_URL_PREFIX", "/flack")
         self.app.config.setdefault("FLACK_DEFAULT_NAME", "flack")
 
-        blueprint = Blueprint('slack_flask', __name__, template_folder="templates")
-        blueprint.add_url_rule("/webhook",
-                               methods=['POST'],
-                               view_func=self._dispath_webhook)
-        blueprint.add_url_rule("/command",
-                               methods=['POST'],
-                               view_func=self._dispath_command)
-        blueprint.add_url_rule("/action",
-                               methods=['POST'],
-                               view_func=self._dispath_action)
+        blueprint = Blueprint('slack_flask',
+                              __name__,
+                              template_folder="templates")
 
-        app.register_blueprint(blueprint, url_prefix=self.app.config["FLACK_URL_PREFIX"])
+        blueprint.add_url_rule("/webhook", methods=['POST'],
+                               view_func=self.dispath_webhook)
+        blueprint.add_url_rule("/command", methods=['POST'],
+                               view_func=self.dispath_command)
+        blueprint.add_url_rule("/action", methods=['POST'],
+                               view_func=self.dispath_action)
+
+        app.register_blueprint(blueprint,
+                               url_prefix=self.app.config["FLACK_URL_PREFIX"])
 
     def _indirect_response(self, message, url):
         indirect_response = {
@@ -132,142 +151,113 @@ class Flack(object):
         logger.debug("Generated response: {!r}".format(response))
         return jsonify(response)
 
-    def _parse_webhook_req(self):
-        data = request.form.to_dict()
+    def validate_token(self, fn):
+        @wraps(fn)
+        def inner(data, *args, **kwargs):
+            if data.get("token") != self.app.config["FLACK_TOKEN"]:
+                # No response if the caller isn't valid.
+                logger.error("Invalid Token")
+                return ""
+            else:
+                return fn(data, *args, **kwargs)
 
-        self._validate_request(data)
+        return inner
+
+    def wrap_errors(self, fn):
+        @wraps(fn)
+        def inner(data, *args, **kwargs):
+            try:
+                return fn(data, *args, **kwargs)
+
+            except Exception as e:
+                logger.exception(
+                    "Caught: {!s}, returning failure.".format(e))
+
+                return self._response(re.sub(r"[\<\>]", "", str(e))
+                                      private=True, replace=False)
+
+        return inner
+
+    @get_form_data
+    @self.validate_token
+    @self.wrap_errors
+    def dispath_webhook(self, data):
         if not data["trigger_word"]:
             raise AttributeError("No trigger word supplied")
 
         prefix = len(data["trigger_word"])
         data["text"] = data["text"][prefix:].strip()
 
-        return data
+        try:
+            callback, user = self.triggers[data["trigger_word"]]
 
-    def _parse_command_req(self):
-        data = request.form.to_dict()
+        except KeyError as e:
+            raise AttributeError("Unregistered trigger: {}".format(e))
 
-        self._validate_request(data)
+        logger.info("Running trigger: '{}' with: '{}'".format(
+            data["trigger_word"], data["text"]))
+
+        req_user = CALLER(data["user_id"], data["user_name"], data["team_id"])
+        response = callback(text=data["text"], user=req_user)
+        return self._response(response, user=user)
+
+    @get_form_data
+    @self.validate_token
+    @self.wrap_errors
+    def _dispath_command(self, data):
         if not data["command"]:
             raise AttributeError("No trigger word supplied")
 
-        return data
+        try:
+            callback = self.commands[data["command"]]
 
-    def _parse_action_req(self):
-        data = json.loads(request.form["payload"])
+        except KeyError as e:
+            raise AttributeError("Unregistered command: {}".format(e))
 
-        self._validate_request(data)
+        logger.info("Running command: '{}' with: '{}'".format(
+            data["command"], data["text"]))
+
+        response = callback(text=data["text"],
+                            user=CALLER(data["user_id"],
+                                        data["user_name"],
+                                        data["team_id"]),
+                            channel=CHANNEL(data["channel_id"],
+                                            data["channel_name"],
+                                            data["team_id"]))
+
+        return self._response(response, response_url=data["response_url"])
+
+    @get_json_data
+    @self.validate_token
+    @self.wrap_errors
+    def _dispath_action(self, data):
         if not len(data["actions"]):
             raise AttributeError("No action supplied")
 
-        return data
-
-    def _validate_request(self, data):
-        if data.get("token") != self.app.config["FLACK_TOKEN"]:
-            raise SlackTokenError(
-                "Invalid token from slack: {}".format(data.get("token")))
-
-    def _dispath_webhook(self):
         try:
-            req = self._parse_webhook_req()
+            # Slack will only send one action per request.
+            action = req["actions"][0]
+            callback = self.actions[action["name"]]
 
-            try:
-                callback, user = self.triggers[req["trigger_word"]]
+        except KeyError as e:
+            raise AttributeError("Unregistered action: {}".format(e))
 
-            except KeyError as e:
-                raise AttributeError("Unregistered trigger: {}".format(e))
+        logger.info("Running action, data: {!r}".format(req))
 
-            logger.info("Running trigger: '{}' with: '{}'".format(
-                req["trigger_word"], req["text"]))
+        user = req["user"]
+        channel = req["channel"]
+        team = req["team"]
+        response = callback(value=action["value"],
+                            ts=req["message_ts"],
+                            callback=req["callback_id"],
+                            user=CALLER(user["id"],
+                                        user["name"],
+                                        team["id"]),
+                            channel=CHANNEL(channel["id"],
+                                            channel["name"],
+                                            team["id"]))
 
-            req_user = CALLER(req["user_id"], req["user_name"], req["team_id"])
-            response = callback(text=req["text"], user=req_user)
-            return self._response(response, user=user)
-
-        except SlackTokenError as e:
-            # No response if the caller isn't valid.
-            logger.exception("Invalid Token")
-            return ""
-
-        except Exception as e:
-            logger.exception("Caught: {!s}, returning failure.".format(e))
-
-            exception_msg = re.sub(r"[\<\>]", "", str(e))
-            return self._response(exception_msg, private=True)
-
-    def _dispath_command(self):
-        try:
-            req = self._parse_command_req()
-
-            try:
-                callback = self.commands[req["command"]]
-
-            except KeyError as e:
-                raise AttributeError("Unregistered command: {}".format(e))
-
-            logger.info("Running command: '{}' with: '{}'".format(
-                req["command"], req["text"]))
-
-            response = callback(text=req["text"],
-                                user=CALLER(req["user_id"],
-                                            req["user_name"],
-                                            req["team_id"]),
-                                channel=CHANNEL(req["channel_id"],
-                                                req["channel_name"],
-                                                req["team_id"]))
-
-            return self._response(response, response_url=req["response_url"])
-
-        except SlackTokenError as e:
-            # No response if the caller isn't valid.
-            logger.exception("Invalid Token")
-            return ""
-
-        except Exception as e:
-            logger.exception("Caught: {!s}, returning failure.".format(e))
-
-            exception_msg = re.sub(r"[\<\>]", "", str(e))
-            return self._response(exception_msg, private=True)
-
-    def _dispath_action(self):
-        try:
-            req = self._parse_action_req()
-
-            try:
-                # Slack will only send one action per request.
-                action = req["actions"][0]
-                callback = self.actions[action["name"]]
-
-            except KeyError as e:
-                raise AttributeError("Unregistered action: {}".format(e))
-
-            logger.info("Running action, data: {!r}".format(req))
-
-            user = req["user"]
-            channel = req["channel"]
-            team = req["team"]
-            response = callback(value=action["value"],
-                                ts=req["message_ts"],
-                                callback=req["callback_id"],
-                                user=CALLER(user["id"],
-                                            user["name"],
-                                            team["id"]),
-                                channel=CHANNEL(channel["id"],
-                                                channel["name"],
-                                                team["id"]))
-
-            return self._response(response, response_url=req["response_url"])
-
-        except SlackTokenError as e:
-            # No response if the caller isn't valid.
-            logger.exception("Invalid Token")
-            return ""
-
-        except Exception as e:
-            logger.exception("Caught: {!s}, returning failure.".format(e))
-
-            exception_msg = re.sub(r"[\<\>]", "", str(e))
-            return self._response(exception_msg, private=True, replace=False)
+        return self._response(response, response_url=req["response_url"])
 
     def trigger(self, trigger_word, **kwargs):
         if not trigger_word:
