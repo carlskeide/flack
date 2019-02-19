@@ -173,7 +173,7 @@ class Flack(object):
                 logger.exception(
                     "Caught: {!s}, returning failure.".format(e))
 
-                return self._response(re.sub(r"[\<\>]", "", str(e))
+                return self._response(re.sub(r"[\<\>]", "", str(e)),
                                       private=True, replace=False)
 
         return inner
