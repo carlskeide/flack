@@ -57,6 +57,35 @@ def get_json_data(fn):
     return inner
 
 
+def validate_token(fn):
+    @wraps(fn)
+    def inner(self, data, *args, **kwargs):
+        if data.get("token") != self.app.config["FLACK_TOKEN"]:
+            # No response if the caller isn't valid.
+            logger.error("Invalid Token")
+            return ""
+        else:
+            return fn(data, *args, **kwargs)
+
+    return inner
+
+
+def wrap_errors(fn):
+    @wraps(fn)
+    def inner(self, data, *args, **kwargs):
+        try:
+            return fn(data, *args, **kwargs)
+
+        except Exception as e:
+            logger.exception(
+                "Caught: {!s}, returning failure.".format(e))
+
+            return self._response(re.sub(r"[\<\>]", "", str(e)),
+                                  private=True, replace=False)
+
+    return inner
+
+
 class Flack(object):
     triggers = {}
     commands = {}
@@ -151,36 +180,9 @@ class Flack(object):
         logger.debug("Generated response: {!r}".format(response))
         return jsonify(response)
 
-    def validate_token(self, fn):
-        @wraps(fn)
-        def inner(data, *args, **kwargs):
-            if data.get("token") != self.app.config["FLACK_TOKEN"]:
-                # No response if the caller isn't valid.
-                logger.error("Invalid Token")
-                return ""
-            else:
-                return fn(data, *args, **kwargs)
-
-        return inner
-
-    def wrap_errors(self, fn):
-        @wraps(fn)
-        def inner(data, *args, **kwargs):
-            try:
-                return fn(data, *args, **kwargs)
-
-            except Exception as e:
-                logger.exception(
-                    "Caught: {!s}, returning failure.".format(e))
-
-                return self._response(re.sub(r"[\<\>]", "", str(e)),
-                                      private=True, replace=False)
-
-        return inner
-
     @get_form_data
-    @self.validate_token
-    @self.wrap_errors
+    @validate_token
+    @wrap_errors
     def dispath_webhook(self, data):
         if not data["trigger_word"]:
             raise AttributeError("No trigger word supplied")
@@ -202,9 +204,9 @@ class Flack(object):
         return self._response(response, user=user)
 
     @get_form_data
-    @self.validate_token
-    @self.wrap_errors
-    def _dispath_command(self, data):
+    @validate_token
+    @wrap_errors
+    def dispath_command(self, data):
         if not data["command"]:
             raise AttributeError("No trigger word supplied")
 
@@ -228,9 +230,9 @@ class Flack(object):
         return self._response(response, response_url=data["response_url"])
 
     @get_json_data
-    @self.validate_token
-    @self.wrap_errors
-    def _dispath_action(self, data):
+    @validate_token
+    @wrap_errors
+    def dispath_action(self, data):
         if not len(data["actions"]):
             raise AttributeError("No action supplied")
 
