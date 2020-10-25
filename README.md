@@ -1,9 +1,9 @@
 # Flack
 *Integrate slack commands and actions with flask*
 
-## Setup
-Py3 only, for now.
+![Python Package](https://github.com/carlskeide/flack/workflows/Python%20package/badge.svg)
 
+## Setup
 Either initialize the app immediately:
 ```
 from flack import Flack

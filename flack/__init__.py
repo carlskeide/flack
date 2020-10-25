@@ -6,7 +6,7 @@ import json
 from functools import wraps
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from typing import Union, Callable
 
 from requests import post
 from flask import Flask, Blueprint, request, jsonify
@@ -40,6 +40,7 @@ def _send_message(self, url: str, message: str) -> bool:
 
     else:
         return True
+
 
 def get_form_data(fn: Callable) -> Callable:
     """ Extracts a form-encded payload from request """
@@ -263,7 +264,7 @@ class Flack:
 
         try:
             # Slack will only send one action per request.
-            action = req["actions"][0]
+            action = data["actions"][0]
             callback = self.actions[action["name"]]
 
         except KeyError as e:
