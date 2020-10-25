@@ -15,7 +15,8 @@ __all__ = ["render_button", "callback", ]
 logger = logging.getLogger(__name__)
 
 DEFAULT_OAUTH_SCOPE = "commands,users:read,channels:read,chat:write:bot"
-OAUTH_CREDENTIALS = namedtuple(
+
+OAuthCredentials = namedtuple(
     "oauth_credentials",
     ("team_id", "access_token", "scope")
 )
@@ -35,25 +36,23 @@ def render_button() -> str:
     )
 
 
-def _oauth_callback_response(code: str) -> None:
+def _oauth_callback_response(code: str) -> OAuthCredentials:
     """ Request OAuth credentials from Slack """
 
     try:
-        response = {
+        logger.debug(u"Requesting OAuth Credentials")
+        response = post("https://slack.com/api/oauth.access", data={
             "code": code,
             "client_id": app.config["FLACK_CLIENT_ID"],
             "client_secret": app.config["FLACK_CLIENT_SECRET"]
-        }
-
-        logger.debug(u"Requesting OAuth Credentials")
-        response = post("https://slack.com/api/oauth.access", data=response)
+        })
         response.raise_for_status()
 
         oauth_response = response.json()
         logger.info(u"Received new OAuth credentials for team: %s, scope: %s",
                     oauth_response["team_id"], oauth_response["scope"])
 
-        return OAUTH_CREDENTIALS(team_id=oauth_response["team_id"],
+        return OAuthCredentials(team_id=oauth_response["team_id"],
                                  access_token=oauth_response["access_token"],
                                  scope=oauth_response["scope"])
 
