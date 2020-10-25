@@ -2,12 +2,13 @@
 import logging
 from functools import wraps
 from collections import namedtuple
+from typing import Callable
 
 from requests import post, HTTPError
 from flask import request, render_template
 from flask import current_app as app
 
-from .exceptions import OAuthConfigError, OAuthResponseError
+from .exceptions import OAuthConfigError, OAuthError
 
 __all__ = ["render_button", "callback", ]
 
@@ -20,7 +21,9 @@ OAUTH_CREDENTIALS = namedtuple(
 )
 
 
-def render_button():
+def render_button() -> str:
+    """ Generates an HTML button for adding the app to a workspace """
+
     if not app.config.get("FLACK_CLIENT_ID"):
         raise OAuthConfigError("Requires client id")
 
@@ -32,7 +35,9 @@ def render_button():
     )
 
 
-def _oauth_callback_response(code):
+def _oauth_callback_response(code: str) -> None:
+    """ Request OAuth credentials from Slack """
+
     try:
         response = {
             "code": code,
@@ -40,37 +45,39 @@ def _oauth_callback_response(code):
             "client_secret": app.config["FLACK_CLIENT_SECRET"]
         }
 
-        logger.debug(u"Requesting OAuth Credentials: {!r}".format(response))
+        logger.debug(u"Requesting OAuth Credentials")
         response = post("https://slack.com/api/oauth.access", data=response)
         response.raise_for_status()
 
-        logger.debug(u"Slack response: {!r}".format(response.text))
-
         oauth_response = response.json()
-        logger.info(u"Received new OAuth credentials for team: {!r}".format(
-            oauth_response["team_id"]))
+        logger.info(u"Received new OAuth credentials for team: %s, scope: %s",
+                    oauth_response["team_id"], oauth_response["scope"])
 
-    except HTTPError:
-        raise OAuthResponseError("Slack rejected the request")
-
-    except Exception:
-        raise OAuthResponseError("Unknown error")
-
-    else:
         return OAUTH_CREDENTIALS(team_id=oauth_response["team_id"],
                                  access_token=oauth_response["access_token"],
                                  scope=oauth_response["scope"])
 
+    except HTTPError:
+        raise OAuthError("Slack rejected the request")
 
-def callback(fn):
+    except Exception:
+        raise OAuthError("Unknown error")
+
+
+def callback(fn: Callable) -> Callable:
+    """ Registers an OAuth Callback handler """
+
+    if not (app.config.get("FLACK_CLIENT_ID") and
+            app.config.get("FLACK_CLIENT_SECRET")):
+        raise OAuthConfigError("Requires client id and secret")
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if (not app.config.get("FLACK_CLIENT_ID")
-                and app.config.get("FLACK_CLIENT_SECRET")):
-            raise OAuthConfigError("Requires client id and secret")
+        logger.info(u"OAuth callback triggered")
 
-        code = request.args["code"]
-        logger.info(u"OAuth callback called with code: {!r}".format(code))
+        code = request.args.get("code")
+        if not code:
+            raise OAuthError("Callback invoked without a code")
 
         credentials = _oauth_callback_response(code)
         kwargs.update(credentials=credentials)

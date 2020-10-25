@@ -6,9 +6,10 @@ import json
 from functools import wraps
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
 
 from requests import post
-from flask import Blueprint, request, jsonify
+from flask import Flask, Blueprint, request, jsonify
 
 from .message import Attachment, PrivateResponse, IndirectResponse
 from .exceptions import SlackTokenError
@@ -25,7 +26,8 @@ CHANNEL = namedtuple("channel", ("id", "name", "team"))
 thread_executor = ThreadPoolExecutor(1)
 
 
-def _send_message(self, url, message):
+def _send_message(self, url: str, message: str) -> bool:
+    """ Send a simple message """
     logger.debug("Sending message to: {}, contents: {}".format(url, message))
 
     # This should prevent out-of-order issues, which slack really doesn't like
@@ -39,7 +41,9 @@ def _send_message(self, url, message):
     else:
         return True
 
-def get_form_data(fn):
+def get_form_data(fn: Callable) -> Callable:
+    """ Extracts a form-encded payload from request """
+
     @wraps(fn)
     def inner(*args, **kwargs):
         data = request.form.to_dict()
@@ -48,7 +52,9 @@ def get_form_data(fn):
     return inner
 
 
-def get_json_data(fn):
+def get_json_data(fn: Callable) -> Callable:
+    """ Extracts a json payload from request """
+
     @wraps(fn)
     def inner(*args, **kwargs):
         data = json.loads(request.form["payload"])
@@ -57,7 +63,9 @@ def get_json_data(fn):
     return inner
 
 
-def validate_token(fn):
+def validate_token(fn: Callable) -> Callable:
+    """ Validates payload tokens """
+
     @wraps(fn)
     def inner(self, data, *args, **kwargs):
         if data.get("token") != self.app.config["FLACK_TOKEN"]:
@@ -70,32 +78,34 @@ def validate_token(fn):
     return inner
 
 
-def wrap_errors(fn):
+def wrap_errors(fn: Callable) -> Callable:
+    """ Ensures exceptions are presented in a way slack understands """
+
     @wraps(fn)
     def inner(self, data, *args, **kwargs):
         try:
             return fn(data, *args, **kwargs)
 
         except Exception as e:
-            logger.exception(
-                "Caught: {!s}, returning failure.".format(e))
-
-            return self._response(re.sub(r"[\<\>]", "", str(e)),
-                                  private=True, replace=False)
+            logger.exception("Caught: %r, returning failure.", e)
+            safe_exception = re.sub(r"[\<\>]", "", repr(e))
+            return self._response(safe_exception, private=True, replace=False)
 
     return inner
 
 
-class Flack(object):
+class Flack:
     triggers = {}
     commands = {}
     actions = {}
 
-    def __init__(self, app=None):
+    def __init__(self, app: Flask = None) -> None:
         if app is not None:
             self.init_app(app)
 
-    def init_app(self, app):
+    def init_app(self, app: Flask) -> None:
+        """ Initialize and register blueprint """
+
         self.app = app
 
         if not self.app.config.get("FLACK_TOKEN"):
@@ -109,16 +119,17 @@ class Flack(object):
                               template_folder="templates")
 
         blueprint.add_url_rule("/webhook", methods=['POST'],
-                               view_func=self.dispath_webhook)
+                               view_func=self.dispatch_webhook)
         blueprint.add_url_rule("/command", methods=['POST'],
-                               view_func=self.dispath_command)
+                               view_func=self.dispatch_command)
         blueprint.add_url_rule("/action", methods=['POST'],
-                               view_func=self.dispath_action)
+                               view_func=self.dispatch_action)
 
         app.register_blueprint(blueprint,
                                url_prefix=self.app.config["FLACK_URL_PREFIX"])
 
-    def _indirect_response(self, message, url):
+    def _indirect_response(self, message: str, url: str) -> None:
+        """ Send the response to a separate endpoint """
         indirect_response = {
             "text": "",
             "attachments": [],
@@ -133,13 +144,21 @@ class Flack(object):
         else:
             indirect_response["text"] = indirect
 
-        logger.debug("Generated indirect response: {!r}".format(
-            indirect_response))
-
+        logger.debug("Generated indirect response: %r", indirect_response)
         thread_executor.submit(_send_message, url, indirect_response)
 
-    def _response(self, message, response_url=None, user=None,
-                  private=False, replace=False):
+    def _response(
+        self,
+        message: Union[
+            None, str, IndirectResponse, PrivateResponse, Attachment
+        ],
+        response_url: str = None,
+        user: str = None,
+        private: bool = False,
+        replace: bool = False
+    ) -> Union[str, dict]:
+        """ Generate the HTTP response to an incoming request from Slack """
+
         response = {
             "username": user or self.app.config["FLACK_DEFAULT_NAME"],
             "text": "",
@@ -177,13 +196,15 @@ class Flack(object):
         else:
             response["text"] = message
 
-        logger.debug("Generated response: {!r}".format(response))
+        logger.debug("Generated response: %r", response)
         return jsonify(response)
 
     @get_form_data
     @validate_token
     @wrap_errors
-    def dispath_webhook(self, data):
+    def dispatch_webhook(self, data: dict) -> Union[str, dict]:
+        """ Parse and dispatch a webhook request """
+
         if not data["trigger_word"]:
             raise AttributeError("No trigger word supplied")
 
@@ -206,7 +227,9 @@ class Flack(object):
     @get_form_data
     @validate_token
     @wrap_errors
-    def dispath_command(self, data):
+    def dispatch_command(self, data: dict) -> Union[str, dict]:
+        """ Parse and dispatch a command request """
+
         if not data["command"]:
             raise AttributeError("No trigger word supplied")
 
@@ -232,7 +255,9 @@ class Flack(object):
     @get_json_data
     @validate_token
     @wrap_errors
-    def dispath_action(self, data):
+    def dispatch_action(self, data: dict) -> Union[str, dict]:
+        """ Parse and dispatch an action """
+
         if not len(data["actions"]):
             raise AttributeError("No action supplied")
 
@@ -244,24 +269,24 @@ class Flack(object):
         except KeyError as e:
             raise AttributeError("Unregistered action: {}".format(e))
 
-        logger.info("Running action, data: {!r}".format(req))
+        logger.info("Running action: %s with value: %s",
+                    action["name"], action["value"])
 
-        user = req["user"]
-        channel = req["channel"]
-        team = req["team"]
         response = callback(value=action["value"],
-                            ts=req["message_ts"],
-                            callback=req["callback_id"],
-                            user=CALLER(user["id"],
-                                        user["name"],
-                                        team["id"]),
-                            channel=CHANNEL(channel["id"],
-                                            channel["name"],
-                                            team["id"]))
+                            ts=data["message_ts"],
+                            callback=data["callback_id"],
+                            user=CALLER(data["user"]["id"],
+                                        data["user"]["username"],
+                                        data["user"]["team_id"]),
+                            channel=CHANNEL(data["channel"]["id"],
+                                            data["channel"]["name"],
+                                            data["team"]["id"]))
 
-        return self._response(response, response_url=req["response_url"])
+        return self._response(response, response_url=data["response_url"])
 
-    def trigger(self, trigger_word, **kwargs):
+    def trigger(self, trigger_word: str, **kwargs: str) -> Callable:
+        """ Register a trigger word handler """
+
         if not trigger_word:
             raise AttributeError("invalid invocation")
 
@@ -278,7 +303,9 @@ class Flack(object):
 
         return decorator
 
-    def command(self, name):
+    def command(self, name: str) -> Callable:
+        """ Register a slash-command handler """
+
         if not name:
             raise AttributeError("invalid invocation")
 
@@ -289,7 +316,9 @@ class Flack(object):
 
         return decorator
 
-    def action(self, name):
+    def action(self, name: str) -> Callable:
+        """ Register a handler for actions """
+
         if not name:
             raise AttributeError("invalid invocation")
 

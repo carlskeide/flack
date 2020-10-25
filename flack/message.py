@@ -1,5 +1,5 @@
 # coding=utf-8
-import abc
+from abc import ABC
 from collections import namedtuple
 
 __all__ = ["PrivateResponse", "IndirectResponse", "Attachment", "Action", ]
@@ -8,14 +8,14 @@ PrivateResponse = namedtuple("PrivateResponse", ("feedback"))
 IndirectResponse = namedtuple("IndirectResponse", ("feedback", "indirect"))
 
 
-class SlackObject(metaclass=abc.ABCMeta):
+class SlackObject(ABC):
     keys = {}
 
     def __init__(self, **kwargs):
         self._struct = {k: v for k, v in kwargs.items() if k in self.keys}
 
     @property
-    def as_dict(self):
+    def as_dict(self) -> dict:
         return self._struct
 
 

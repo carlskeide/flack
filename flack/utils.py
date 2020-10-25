@@ -2,5 +2,7 @@
 __all__ = ["slack_username", ]
 
 
-def slack_username(id):
-    return "<@{}>".format(id)
+def slack_username(user_id: str) -> str:
+    """ Generate a slack username macro """
+
+    return "<@{}>".format(user_id)
