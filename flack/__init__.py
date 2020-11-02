@@ -1,6 +1,5 @@
 # coding=utf-8
 import logging
-import re
 import time
 import json
 from functools import wraps
@@ -9,7 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Union, Callable
 
 from requests import post
-from flask import Flask, Blueprint, request, jsonify
+from flask import (
+    Flask, Blueprint, current_app,
+    request, jsonify, abort,
+)
+from werkzeug.exceptions import HTTPException
 
 from .message import Attachment, PrivateResponse, IndirectResponse
 from .exceptions import SlackTokenError
@@ -48,7 +51,9 @@ def get_form_data(fn: Callable) -> Callable:
     @wraps(fn)
     def inner(*args, **kwargs):
         data = request.form.to_dict()
-        return fn(data, *args, **kwargs)
+        kwargs["data"] = data
+
+        return fn(*args, **kwargs)
 
     return inner
 
@@ -59,7 +64,9 @@ def get_json_data(fn: Callable) -> Callable:
     @wraps(fn)
     def inner(*args, **kwargs):
         data = json.loads(request.form["payload"])
-        return fn(data, *args, **kwargs)
+        kwargs["data"] = data
+
+        return fn(*args, **kwargs)
 
     return inner
 
@@ -68,13 +75,14 @@ def validate_token(fn: Callable) -> Callable:
     """ Validates payload tokens """
 
     @wraps(fn)
-    def inner(self, data, *args, **kwargs):
-        if data.get("token") != self.app.config["FLACK_TOKEN"]:
+    def inner(*args, **kwargs):
+        token = kwargs.get("data", {}).get("token")
+        if token != current_app.config["FLACK_TOKEN"]:
             # No response if the caller isn't valid.
             logger.error("Invalid Token")
             return ""
         else:
-            return fn(data, *args, **kwargs)
+            return fn(*args, **kwargs)
 
     return inner
 
@@ -83,14 +91,16 @@ def wrap_errors(fn: Callable) -> Callable:
     """ Ensures exceptions are presented in a way slack understands """
 
     @wraps(fn)
-    def inner(self, data, *args, **kwargs):
+    def inner(self, *args, **kwargs):
         try:
-            return fn(data, *args, **kwargs)
+            return fn(self, *args, **kwargs)
 
         except Exception as e:
-            logger.exception("Caught: %r, returning failure.", e)
-            safe_exception = re.sub(r"[\<\>]", "", repr(e))
-            return self._response(safe_exception, private=True, replace=False)
+            if isinstance(e, HTTPException):
+                raise
+            else:
+                logger.exception("Caught: %r, coercing to HTTP 500.", e)
+                abort(500)
 
     return inner
 
@@ -205,18 +215,16 @@ class Flack:
     @wrap_errors
     def dispatch_webhook(self, data: dict) -> Union[str, dict]:
         """ Parse and dispatch a webhook request """
-
-        if not data["trigger_word"]:
-            raise AttributeError("No trigger word supplied")
-
-        prefix = len(data["trigger_word"])
-        data["text"] = data["text"][prefix:].strip()
-
         try:
+            prefix = len(data["trigger_word"])
+            data["text"] = data["text"][prefix:].strip()
             callback, user = self.triggers[data["trigger_word"]]
 
-        except KeyError as e:
-            raise AttributeError("Unregistered trigger: {}".format(e))
+        except KeyError:
+            logger.error("Unknown trigger: %s", data.get("trigger_word"))
+            logger.error("Known triggers: %s", self.triggers.keys())
+            abort(400)
+
 
         logger.info("Running trigger: '{}' with: '{}'".format(
             data["trigger_word"], data["text"]))
@@ -230,15 +238,12 @@ class Flack:
     @wrap_errors
     def dispatch_command(self, data: dict) -> Union[str, dict]:
         """ Parse and dispatch a command request """
-
-        if not data["command"]:
-            raise AttributeError("No trigger word supplied")
-
         try:
             callback = self.commands[data["command"]]
 
-        except KeyError as e:
-            raise AttributeError("Unregistered command: {}".format(e))
+        except KeyError:
+            logger.error("Unknown command: %s", data.get("command"))
+            abort(400)
 
         logger.info("Running command: '{}' with: '{}'".format(
             data["command"], data["text"]))
@@ -267,8 +272,9 @@ class Flack:
             action = data["actions"][0]
             callback = self.actions[action["name"]]
 
-        except KeyError as e:
-            raise AttributeError("Unregistered action: {}".format(e))
+        except KeyError:
+            logger.error("Unknown action: %s", data.get("action"))
+            abort(400)
 
         logger.info("Running action: %s with value: %s",
                     action["name"], action["value"])
