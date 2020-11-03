@@ -14,6 +14,13 @@ class SlackObject(ABC):
     def __init__(self, **kwargs):
         self._struct = {k: v for k, v in kwargs.items() if k in self.keys}
 
+    def __getattr__(self, attr):
+        try:
+            return self._struct[attr]
+
+        except KeyError:
+            raise ValueError(attr)
+
     @property
     def as_dict(self) -> dict:
         return self._struct

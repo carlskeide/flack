@@ -15,7 +15,7 @@ from flask import (
 from werkzeug.exceptions import HTTPException
 
 from .message import Attachment, PrivateResponse, IndirectResponse
-from .exceptions import SlackTokenError
+from .exceptions import ConfigError
 
 __all__ = ["Flack", ]
 
@@ -76,11 +76,16 @@ def validate_token(fn: Callable) -> Callable:
 
     @wraps(fn)
     def inner(*args, **kwargs):
-        token = kwargs.get("data", {}).get("token")
-        if token != current_app.config["FLACK_TOKEN"]:
-            # No response if the caller isn't valid.
+        request_token = kwargs.get("data", {}).get("token")
+        flack_token = current_app.config["FLACK_TOKEN"]
+
+        if not flack_token:
+            raise ConfigError("A token must be defined")
+
+        elif request_token != flack_token:
             logger.error("Invalid Token")
-            return ""
+            abort(403)
+
         else:
             return fn(*args, **kwargs)
 
@@ -119,9 +124,7 @@ class Flack:
 
         self.app = app
 
-        if not self.app.config.get("FLACK_TOKEN"):
-            raise SlackTokenError("A token must be defined")
-
+        self.app.config.setdefault("FLACK_TOKEN", "")
         self.app.config.setdefault("FLACK_URL_PREFIX", "/flack")
         self.app.config.setdefault("FLACK_DEFAULT_NAME", "flack")
 
@@ -224,7 +227,6 @@ class Flack:
             logger.error("Unknown trigger: %s", data.get("trigger_word"))
             logger.error("Known triggers: %s", self.triggers.keys())
             abort(400)
-
 
         logger.info("Running trigger: '{}' with: '{}'".format(
             data["trigger_word"], data["text"]))

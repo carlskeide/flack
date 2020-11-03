@@ -1,8 +1,8 @@
 # coding=utf-8
-__all__ = ["SlackTokenError", "OAuthConfigError", "OAuthError"]
+__all__ = ["ConfigError", "OAuthConfigError", "OAuthError"]
 
 
-class SlackTokenError(Exception):
+class ConfigError(Exception):
     pass
 
 
