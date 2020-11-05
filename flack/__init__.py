@@ -96,16 +96,17 @@ def wrap_errors(fn: Callable) -> Callable:
     """ Ensures exceptions are presented in a way slack understands """
 
     @wraps(fn)
-    def inner(self, *args, **kwargs):
+    def inner(*args, **kwargs):
         try:
-            return fn(self, *args, **kwargs)
+            return fn(*args, **kwargs)
+
+        except HTTPException:
+            # No need to alter an HTTP response
+            raise
 
         except Exception as e:
-            if isinstance(e, HTTPException):
-                raise
-            else:
-                logger.exception("Caught: %r, coercing to HTTP 500.", e)
-                abort(500)
+            logger.exception("Caught: %r, coercing to HTTP 500.", e)
+            abort(500)
 
     return inner
 
@@ -168,8 +169,6 @@ class Flack:
         ],
         response_url: str = None,
         user: str = None,
-        private: bool = False,
-        replace: bool = False
     ) -> Union[str, dict]:
         """ Generate the HTTP response to an incoming request from Slack """
 
@@ -177,8 +176,8 @@ class Flack:
             "username": user or self.app.config["FLACK_DEFAULT_NAME"],
             "text": "",
             "attachments": [],
-            "response_type": "ephemeral" if private else "in_channel",
-            "replace_original": replace
+            "response_type": "in_channel",
+            "replace_original": False
         }
 
         if message is None:
@@ -231,8 +230,15 @@ class Flack:
         logger.info("Running trigger: '{}' with: '{}'".format(
             data["trigger_word"], data["text"]))
 
-        req_user = CALLER(data["user_id"], data["user_name"], data["team_id"])
-        response = callback(text=data["text"], user=req_user)
+        response = callback(
+            text=data["text"],
+            user=CALLER(
+                data["user_id"],
+                data["user_name"],
+                data["team_id"]
+            )
+        )
+
         return self._response(response, user=user)
 
     @get_form_data
@@ -250,13 +256,20 @@ class Flack:
         logger.info("Running command: '{}' with: '{}'".format(
             data["command"], data["text"]))
 
-        response = callback(text=data["text"],
-                            user=CALLER(data["user_id"],
-                                        data["user_name"],
-                                        data["team_id"]),
-                            channel=CHANNEL(data["channel_id"],
-                                            data["channel_name"],
-                                            data["team_id"]))
+        response = callback(
+            text=data["text"],
+            trigger=data["trigger_id"],
+            user=CALLER(
+                data["user_id"],
+                data["user_name"],
+                data["team_id"]
+            ),
+            channel=CHANNEL(
+                data["channel_id"],
+                data["channel_name"],
+                data["team_id"]
+            )
+        )
 
         return self._response(response, response_url=data["response_url"])
 
@@ -270,26 +283,37 @@ class Flack:
             raise AttributeError("No action supplied")
 
         try:
-            # Slack will only send one action per request.
+            # We're only handling basic, single-action payloads at this point
             action = data["actions"][0]
-            callback = self.actions[action["name"]]
+            callback = self.actions[action["action_id"]]
 
         except KeyError:
-            logger.error("Unknown action: %s", data.get("action"))
+            logger.error("Unknown action spec: %r", data.get("actions"))
             abort(400)
 
         logger.info("Running action: %s with value: %s",
-                    action["name"], action["value"])
+                    action["action_id"], action["value"])
 
-        response = callback(value=action["value"],
-                            ts=data["message_ts"],
-                            callback=data["callback_id"],
-                            user=CALLER(data["user"]["id"],
-                                        data["user"]["username"],
-                                        data["user"]["team_id"]),
-                            channel=CHANNEL(data["channel"]["id"],
-                                            data["channel"]["name"],
-                                            data["team"]["id"]))
+        try:
+            message_ts = data["message"]["ts"]
+
+        except KeyError:
+            message_ts = None
+
+        response = callback(
+            value=action["value"],
+            trigger=data["trigger_id"],
+            message_ts=message_ts,
+            user=CALLER(
+                data["user"]["id"],
+                data["user"]["username"],
+                data["user"]["team_id"]),
+            channel=CHANNEL(
+                data["channel"]["id"],
+                data["channel"]["name"],
+                data["team"]["id"]
+            )
+        )
 
         return self._response(response, response_url=data["response_url"])
 
