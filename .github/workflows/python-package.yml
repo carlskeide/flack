@@ -39,23 +39,23 @@ jobs:
       run: |
         pytest -v
 
-  # publish:
-  #   needs: build
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
-  #   runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #   - uses: actions/checkout@v2
-  #   - name: Set up Python 3.8
-  #     uses: actions/setup-python@v2
-  #     with:
-  #       python-version: 3.8
-  #   - name: Build Package
-  #     run: |
-  #       python setup.py sdist
-  #   - name: Publish package
-  #     uses: pypa/gh-action-pypi-publish@master
-  #     with:
-  #       user: __token__
-  #       password: ${{ secrets.pypi_password }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Build Package
+      run: |
+        python setup.py sdist
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        user: __token__
+        password: ${{ secrets.pypi_password }}
