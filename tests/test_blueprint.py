@@ -54,17 +54,17 @@ def test_trigger(flack):
     assert "foo" in str(response.data)
 
     # Flack shouldn't hadd positional args
-    assert mock_handler.call_args.args == ()
+    args, kwargs = mock_handler.call_args
+    assert args == ()
 
     # See WEBHOOK_DATA
-    assert set(mock_handler.call_args.kwargs.keys()) == {"text", "user"}
+    assert set(kwargs.keys()) == {"text", "user"}
 
-    assert mock_handler.call_args.kwargs["text"] == "Testing"
+    assert kwargs["text"] == "Testing"
 
-    user = mock_handler.call_args.kwargs["user"]
-    assert user.id == "U2147483697"
-    assert user.name == "Steve"
-    assert user.team == "T0001"
+    assert kwargs["user"].id == "U2147483697"
+    assert kwargs["user"].name == "Steve"
+    assert kwargs["user"].team == "T0001"
 
 
 def test_command(flack):
@@ -81,10 +81,10 @@ def test_command(flack):
     assert "foo" in str(response.data)
 
     # Flack shouldn't hadd positional args
-    assert mock_handler.call_args.args == ()
+    args, kwargs = mock_handler.call_args
+    assert args == ()
 
     # See COMMAND_DATA
-    kwargs = mock_handler.call_args.kwargs
     assert set(kwargs.keys()) == {"text", "trigger", "user", "channel"}
 
     assert kwargs["text"] == "Testing"
@@ -113,10 +113,10 @@ def test_action(flack):
     assert "foo" in str(response.data)
 
     # Flack shouldn't hadd positional args
-    assert mock_handler.call_args.args == ()
+    args, kwargs = mock_handler.call_args
+    assert args == ()
 
     # See BLOCK_ACTION_DATA
-    kwargs = mock_handler.call_args.kwargs
     assert set(kwargs.keys()) == {"value", "trigger", "message_ts", "user", "channel"}
 
     assert kwargs["value"] == "Testing"
