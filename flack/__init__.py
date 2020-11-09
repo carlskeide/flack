@@ -258,7 +258,7 @@ class Flack:
 
         response = callback(
             text=data["text"],
-            trigger=data["trigger_id"],
+            trigger=data.get("trigger_id"),
             user=CALLER(
                 data["user_id"],
                 data["user_name"],
@@ -294,20 +294,15 @@ class Flack:
         logger.info("Running action: %s with value: %s",
                     action["action_id"], action["value"])
 
-        try:
-            message_ts = data["message"]["ts"]
-
-        except KeyError:
-            message_ts = None
-
         response = callback(
             value=action["value"],
-            trigger=data["trigger_id"],
-            message_ts=message_ts,
+            trigger=data.get("trigger_id"),
+            message_ts=data.get("message", {}).get("ts"),
             user=CALLER(
                 data["user"]["id"],
                 data["user"]["username"],
-                data["user"]["team_id"]),
+                data["user"]["team_id"]
+            ),
             channel=CHANNEL(
                 data["channel"]["id"],
                 data["channel"]["name"],
