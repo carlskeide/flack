@@ -8,9 +8,11 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  release:
+    types: [ created ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     strategy:
@@ -40,8 +42,8 @@ jobs:
         pytest -v
 
   publish:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: test
+    if: github.event_name == 'release'
 
     runs-on: ubuntu-latest
 
