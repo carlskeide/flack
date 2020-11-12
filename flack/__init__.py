@@ -29,12 +29,12 @@ CHANNEL = namedtuple("channel", ("id", "name", "team"))
 thread_executor = ThreadPoolExecutor(1)
 
 
-def _send_message(self, url: str, message: str) -> bool:
+def _send_message(url: str, message: str) -> bool:
     """ Send a simple message """
     logger.debug("Sending message to: {}, contents: {}".format(url, message))
 
     # This should prevent out-of-order issues, which slack really doesn't like
-    time.sleep(1)
+    time.sleep(0.5)
     response = post(url, json=message)
 
     if response.status_code == 404:
@@ -159,7 +159,8 @@ class Flack:
         else:
             indirect_response["text"] = indirect
 
-        logger.debug("Generated indirect response: %r", indirect_response)
+        logger.debug("Dispathing indirect response: %r to %s",
+                     indirect_response, url)
         thread_executor.submit(_send_message, url, indirect_response)
 
     def _response(
