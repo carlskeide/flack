@@ -5,7 +5,7 @@ from collections import namedtuple
 from typing import Callable
 
 from requests import post, HTTPError
-from flask import request, render_template
+from flask import request, render_template, abort
 from flask import current_app as app
 
 from .exceptions import OAuthConfigError, OAuthError
@@ -59,16 +59,9 @@ def _oauth_callback_response(code: str) -> OAuthCredentials:
     except HTTPError:
         raise OAuthError("Slack rejected the request")
 
-    except Exception:
-        raise OAuthError("Unknown error")
-
 
 def callback(fn: Callable) -> Callable:
     """ Registers an OAuth Callback handler """
-
-    if not (app.config.get("FLACK_CLIENT_ID") and
-            app.config.get("FLACK_CLIENT_SECRET")):
-        raise OAuthConfigError("Requires client id and secret")
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -76,10 +69,19 @@ def callback(fn: Callable) -> Callable:
 
         code = request.args.get("code")
         if not code:
-            raise OAuthError("Callback invoked without a code")
+            abort(400, "Bad request")
 
-        credentials = _oauth_callback_response(code)
-        kwargs.update(credentials=credentials)
+        try:
+            credentials = _oauth_callback_response(code)
+            kwargs.update(credentials=credentials)
+
+        except OAuthError:
+            logger.exception("OAuth callback rejected")
+            abort(500, "Internal error")
+
+        except Exception:
+            logger.exception("Unknown error")
+            abort(500, "Internal error")
 
         return fn(*args, **kwargs)
 

@@ -83,19 +83,20 @@ While not necessary for basic usage, Flack has support for registering an OAuth 
 - `FLACK_SCOPE` Slack API scope to request (default is `commands,users:read,channels:read,chat:write:bot`).
 
 ### Usage
-Generate the Slack button HTML snippet and expose it to the client wherever you like with `flack.oauth.render_button`
+Generate the Slack button HTML snippet and expose it to the client wherever you like with `flack.oauth.render_button()`
 
 Then create a view that can receive the generated credentials from Slack. Make sure the url matches what you provided as the "Redirect URL" when creating the Slack app.
 ```
 import flack.oauth
 
 @app.route('/callback')
-flack.oauth.callback()
+@flack.oauth.callback
 def callback(credentials):
     # Make sure to store the credentials somewhere safe.
     your_datastore.write({
-        "team": credentials.team_id
-        "token": credentials.access_token
+        "team": credentials.team_id,
+        "token": credentials.access_token,
+        "scope": credentials.scope
     })
     # And make sure to inform the client everything went fine
     return "It worked!"
